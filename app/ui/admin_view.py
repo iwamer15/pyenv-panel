@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from ..config import RuntimePaths
 from ..status import read_all_status_reports
+from .manifest_editor import ManifestEditorDialog
 
 COLUMNS = ["端末名", "利用者", "Pythonバージョン", "準拠状況", "不足件数", "不一致件数", "最終同期日時"]
 
@@ -35,10 +36,13 @@ class AdminView(QWidget):
         self.unsynced_label = QLabel("未準拠端末数: -")
         refresh_btn = QPushButton("更新")
         refresh_btn.clicked.connect(self.refresh)
+        edit_manifest_btn = QPushButton("マニフェスト編集")
+        edit_manifest_btn.clicked.connect(self.edit_manifest)
         summary_row.addWidget(self.summary_label)
         summary_row.addSpacing(20)
         summary_row.addWidget(self.unsynced_label)
         summary_row.addStretch(1)
+        summary_row.addWidget(edit_manifest_btn)
         summary_row.addWidget(refresh_btn)
         root.addLayout(summary_row)
 
@@ -50,6 +54,12 @@ class AdminView(QWidget):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         root.addWidget(self.table, stretch=1)
+
+    def edit_manifest(self):
+        dialog = ManifestEditorDialog(self.paths.manifest_path, parent=self)
+        dialog.exec()
+        # 保存有無に関わらず、マニフェスト更新日時等が変わっている可能性があるので再集計する
+        self.refresh()
 
     def refresh(self):
         reports = read_all_status_reports(self.paths.status_dir)

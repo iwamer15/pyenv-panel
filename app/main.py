@@ -1,7 +1,12 @@
 """エントリポイント。
 
 実行例:
-    python -m app.main
+    python -m app.main            # GUI起動（端末モード/管理者モード）
+    python -m app.main check      # ヘッドレス自己診断（タスクスケジューラ向け。GUIは開かない）
+    python -m app.main check --sync
+
+    PyInstallerでビルドした exe も同様に `PyEnvPanel.exe check` で
+    ヘッドレス実行できる（app/cli.py 参照）。
 
 環境変数（開発・動作確認用）:
     PYENV_PANEL_RUNTIME_ROOT   共有ランタイムのルート（既定: sample_runtime/ または UNCパス）
@@ -11,13 +16,21 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtWidgets import QApplication
-
+from . import cli
 from .config import resolve_runtime_root, resolve_target_python
-from .ui.main_window import MainWindow
 
 
 def main() -> int:
+    # サブコマンド（例: "check"）が指定された場合はGUIを起動せず、
+    # app.cli にそのまま委譲する（タスクスケジューラ等の無人実行向け）。
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
+        return cli.main(sys.argv[1:])
+
+    # 遅延import: ヘッドレス実行時にPySide6のQApplication初期化コストや
+    # プラットフォームプラグイン依存を避けるため、GUIモードでのみ読み込む。
+    from PySide6.QtWidgets import QApplication
+    from .ui.main_window import MainWindow
+
     app = QApplication(sys.argv)
 
     paths = resolve_runtime_root()

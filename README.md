@@ -110,14 +110,80 @@ exeをダウンロードできます。
 
 その後、実運用に向けて以下をClaude Codeで進めるのがおすすめです（優先度順の目安）。
 
-- 実際の組織標準ライブラリ（requests / numpy / pandas 等）用に `sample_runtime/config/manifest.json`
+- [x] 管理者モードからのマニフェスト編集UI（[実装済み](#マニフェスト編集管理者モード)。手動でのJSON編集は不要になった）
+- [x] タスクスケジューラ連携による定期自己診断・自動レポート送信（[実装済み](#定期自己診断タスクスケジューラ連携)）
+- [x] 共有サーバのアクセス権設定（config/python/wheelsは読取専用、statusは自ホスト名のみ書込可）用のスクリプトを用意
+      （[実装済み](#共有サーバのアクセス権設定)。実際のAD/グループ名を渡してWindows実機・実サーバで実行するのはIT側の作業）
+- [ ] 実際の組織標準ライブラリ（requests / numpy / pandas 等）用に `sample_runtime/config/manifest.json`
   と `sample_runtime/wheels/` を差し替え、UNC共有サーバの実パスに合わせて `DEFAULT_RUNTIME_ROOT` を更新
-- `runtime/python/<version>/` に組織標準のPythonインストーラ（python.org公式インストーラ）を配置し、
+  — 貴社の標準パッケージ一覧・実UNCパスが必要（未着手）
+- [ ] `runtime/python/<version>/` に組織標準のPythonインストーラ（python.org公式インストーラ）を配置し、
   Windows実機で「Pythonをインストール」ボタンの動作を検証（このプロトタイプはロジックのみモックで検証済み）
-- 管理者モードからのマニフェスト編集UI（現状は手動でJSON編集する想定）
-- タスクスケジューラ連携による定期自己診断・自動レポート送信
-- 共有サーバのアクセス権設定（config/python/wheelsは読取専用、statusは自ホスト名のみ書込可）
-- exeの社内配布・コードサイニング証明書での署名
+  — Windows実機での検証が必要（未着手）
+- [ ] exeの社内配布・コードサイニング証明書での署名 — 貴社のコード署名証明書が必要（未着手）
+
+### マニフェスト編集（管理者モード）
+
+管理者モード画面の「マニフェスト編集」ボタンから `runtime/config/manifest.json` を直接編集できる
+（[app/ui/manifest_editor.py](app/ui/manifest_editor.py)）。手動でのJSON編集は不要。
+
+- 基本設定: Pythonバージョン／インストーラ相対パス／wheelhouseディレクトリ名
+- パッケージ一覧: 組織標準ライブラリのマスタ（名前・バージョン）を行単位で追加・編集・削除
+- グループ: 配布グループ（`default` 等）ごとの `extends` と参照パッケージを編集
+
+保存時に整合性チェック（未定義パッケージの参照・`extends` の循環参照・`default` グループの存在など、
+[app/manifest.py](app/manifest.py) の `validate_raw_manifest`）を行い、問題があれば保存を拒否する。
+保存に成功すると `updated_at` が自動更新される。
+
+### 定期自己診断（タスクスケジューラ連携）
+
+GUIを開かずにスキャン・レポート送信（必要なら自動同期）だけを行うヘッドレスモードを追加した
+（[app/cli.py](app/cli.py)）。
+
+```powershell
+# 開発時（ソースから直接）
+python -m app.main check          # スキャンしてレポート送信のみ
+python -m app.main check --sync   # 差分があれば自動同期まで実行
+
+# ビルド済みexe（Windows実機）
+PyEnvPanel.exe check
+PyEnvPanel.exe check --sync
+```
+
+Pythonバージョン自体の不一致（サイレントインストールが必要なケース）は無人実行では自動化せず、
+「要対応」として `runtime/status/<hostname>.json` に記録するのみに留める
+（利用者の同意なくPython本体を差し替えないため）。
+
+`pyenv_panel.spec` は `console=False` でビルドしているためタスクスケジューラ実行時は標準出力が見えない。
+そのため実行結果は `runtime/logs/check_<hostname>.log` にも必ず出力する（開発時のターミナル実行では
+標準出力にも表示される）。
+
+タスクスケジューラへの登録は [packaging/register_scheduled_task.ps1](packaging/register_scheduled_task.ps1)
+を使う（Windows実機で実行）。
+
+```powershell
+# 4時間ごとに自己診断＋自動同期を、ログオン中のみ実行するタスクを登録
+.\packaging\register_scheduled_task.ps1 -ExePath "C:\Program Files\PyEnvPanel\PyEnvPanel.exe" -Sync
+
+# 登録解除
+.\packaging\register_scheduled_task.ps1 -Unregister
+```
+
+### 共有サーバのアクセス権設定
+
+[packaging/setup_runtime_acl.ps1](packaging/setup_runtime_acl.ps1) は、共有ランタイムのルートに対して
+設計書どおりのNTFSアクセス権（`config/` `python/` `wheels/` は読取専用、`status/` `logs/` は
+自ホストが作成したファイルのみ変更可）を設定する（Windowsのファイルサーバ実機で、対象パスへの
+アクセス権を持つアカウントで実行する）。
+
+```powershell
+.\packaging\setup_runtime_acl.ps1 -RuntimeRoot "\\fileserver\share\runtime" `
+    -ReadOnlyGroup "CONTOSO\PyEnvPanel-Clients" -AdminGroup "CONTOSO\PyEnvPanel-Admins"
+```
+
+「自分が作成したレポートのみ変更できる（他端末のレポートは読めるが上書き・削除できない）」という
+要件は、通常のグループ権限だけでは表現できないため、NTFSの `CREATOR OWNER` 特殊プリンシパルを用いて
+実現している（スクリプト内コメント参照）。UNC共有の場合はSMB共有レベルの権限も別途必要になる点に注意。
 
 ## ディレクトリ構成
 
@@ -126,22 +192,26 @@ prototype/
 ├─ app/
 │  ├─ config.py            共有ランタイムルート／対象Pythonの解決
 │  ├─ models.py             データモデル
-│  ├─ manifest.py           manifest.json の読み込み
+│  ├─ manifest.py           manifest.json の読み込み・編集UI向けの生JSON入出力／検証
 │  ├─ scanner.py             対象Pythonのスキャンと差分計算
 │  ├─ syncer.py              pip installによるオフライン同期
 │  ├─ python_installer.py    Python本体のサイレントインストール
 │  ├─ status.py              端末レポートの読み書き
 │  ├─ service.py             GUI/CLI共通のサービス層
+│  ├─ cli.py                 ヘッドレス自己診断（タスクスケジューラ向け、`app.main check`）
 │  ├─ ui/
 │  │  ├─ main_window.py      モード切替（QStackedWidget）
 │  │  ├─ terminal_view.py    端末モード画面
-│  │  └─ admin_view.py       管理者モード画面
-│  └─ main.py                エントリポイント
+│  │  ├─ admin_view.py       管理者モード画面
+│  │  └─ manifest_editor.py  マニフェスト編集ダイアログ（管理者モードから起動）
+│  └─ main.py                エントリポイント（GUI／`check`サブコマンドでヘッドレス実行を振り分け）
 ├─ run.py                    PyInstaller用エントリポイント（相対import対策）
 ├─ pyenv_panel.spec          PyInstallerビルド定義
 ├─ packaging/
-│  ├─ app.ico                 アプリアイコン（プレースホルダ）
-│  └─ version_info.txt        Windowsバージョンリソース情報
+│  ├─ app.ico                       アプリアイコン（プレースホルダ）
+│  ├─ version_info.txt              Windowsバージョンリソース情報
+│  ├─ register_scheduled_task.ps1   定期自己診断タスクの登録／解除
+│  └─ setup_runtime_acl.ps1         共有ランタイムのNTFSアクセス権設定
 ├─ build.ps1                  Windows実機用ビルドスクリプト
 ├─ .github/workflows/build.yml  GitHub Actionsビルド・リリース定義
 ├─ sample_runtime/            UNC共有サーバを模したサンプルデータ（開発・デモ用）
@@ -164,3 +234,19 @@ prototype/
 - `pyenv_panel.spec` を実際にPyInstallerでビルドし、生成物が起動することを確認
   （このセッションはLinux環境のためLinuxバイナリでの検証。Windows向けexeの生成自体は
   GitHub Actions（windows-latest）またはWindows実機で行う必要がある）
+
+### 追加実装分の動作確認（マニフェスト編集・タスクスケジューラ連携・ACLスクリプト）
+
+- `app/manifest.py` の `load_raw_manifest` / `save_raw_manifest` / `validate_raw_manifest`:
+  正常な読み込み・保存（`updated_at` 自動更新）、グループが未定義パッケージを参照するケース、
+  `extends` の循環参照ケースをそれぞれ検証し、意図通りにエラー検出・保存拒否されることを確認
+- `app/ui/manifest_editor.py` / `admin_view.py` / `main_window.py`:
+  `QT_QPA_PLATFORM=offscreen` でダイアログ生成・パッケージ行追加・保存（ファイルへの反映）・
+  管理者モードからの起動導線まで確認
+- `app/cli.py`（`python -m app.cli check` / `check --sync`）:
+  クリーンなテスト用venvに対して、未準拠→`--sync`による自動同期→再チェックで準拠状態になることと、
+  終了コード（0/1/2）・`runtime/logs/check_<hostname>.log` へのログ出力を確認
+- `packaging/register_scheduled_task.ps1` / `setup_runtime_acl.ps1`:
+  このセッションはmacOS環境でPowerShellが無いため実行検証はできていない。内容のレビューで
+  `Register-ScheduledTask` の `-Principal` と `-User`/`-Password` 併用不可（パラメータセット競合）の
+  バグを検出・修正済み。実際の登録・ACL適用はWindows実機での確認が必要
