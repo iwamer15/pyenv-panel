@@ -1,0 +1,17 @@
+{
+  "hostname": "PC-0003",
+  "user": "tanaka",
+  "checked_at": "2026-08-15T08:05:00+09:00",
+  "local_python_version": "3.10.11",
+  "manifest_python_version": "3.11.9",
+  "python_compliant": false,
+  "compliant": false,
+  "missing_count": 1,
+  "mismatch_count": 0,
+  "extra_package_count": 15,
+  "last_sync_at": null,
+  "diff_items": [
+    { "name": "six", "required_version": "1.16.0", "installed_version": "1.16.0", "status": "OK" },
+    { "name": "certifi", "required_version": "2024.7.4", "installed_version": null, "status": "未インストール" }
+  ]
+}

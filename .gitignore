@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.venv/
+.build-venv/
+build/
+dist/
+*.spec.bak
+sample_runtime/status/*.json.tmp
+
+# 実際のWindowsインストーラ等の大きいバイナリは共有サーバ側で管理し、
+# リポジトリには含めない想定
+sample_runtime/python/**/*.exe
+sample_runtime/python/**/*.zip

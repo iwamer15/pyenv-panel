@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "updated_at": "2026-08-20T10:00:00+09:00",
+  "python": {
+    "version": "3.11.9",
+    "installer_path": "python/3.11.9/python-3.11.9-amd64.exe"
+  },
+  "packages": [
+    { "name": "six", "version": "1.16.0" },
+    { "name": "certifi", "version": "2024.7.4" }
+  ],
+  "wheelhouse": "wheels",
+  "groups": {
+    "default": {
+      "packages": ["six", "certifi"]
+    },
+    "data-science": {
+      "extends": "default",
+      "packages": []
+    }
+  }
+}

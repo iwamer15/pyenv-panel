@@ -1,0 +1,17 @@
+{
+  "hostname": "PC-0002",
+  "user": "suzuki",
+  "checked_at": "2026-08-21T18:40:00+09:00",
+  "local_python_version": "3.11.9",
+  "manifest_python_version": "3.11.9",
+  "python_compliant": true,
+  "compliant": false,
+  "missing_count": 0,
+  "mismatch_count": 1,
+  "extra_package_count": 8,
+  "last_sync_at": "2026-08-10T11:00:00+09:00",
+  "diff_items": [
+    { "name": "six", "required_version": "1.16.0", "installed_version": "1.16.0", "status": "OK" },
+    { "name": "certifi", "required_version": "2024.7.4", "installed_version": "2023.7.22", "status": "バージョン不一致" }
+  ]
+}

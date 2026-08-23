@@ -1,0 +1,29 @@
+# PyInstallerの --version-file 用のWindowsバージョンリソース情報。
+# app/__init__.py の __version__ と手動で合わせること（0.1.0 -> 0,1,0,0）。
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(0, 1, 0, 0),
+    prodvers=(0, 1, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0)
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'041104b0',
+          [StringStruct(u'CompanyName', u'社内組織名'),
+           StringStruct(u'FileDescription', u'Python環境統一管理ツール'),
+           StringStruct(u'FileVersion', u'0.1.0'),
+           StringStruct(u'InternalName', u'PyEnvPanel'),
+           StringStruct(u'OriginalFilename', u'PyEnvPanel.exe'),
+           StringStruct(u'ProductName', u'PyEnvPanel'),
+           StringStruct(u'ProductVersion', u'0.1.0')])
+      ]),
+    VarFileInfo([VarStruct(u'Translation', [1041, 1200])])
+  ]
+)
