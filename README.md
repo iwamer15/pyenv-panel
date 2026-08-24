@@ -75,18 +75,23 @@ Windows実機・VMで `build.ps1` を実行してください。
 `.github/workflows/build.yml` により、以下が自動化されています。
 
 - `main` への push / PR / 手動実行: windows-latest ランナーでビルドが通ることを検証し、
-  `PyEnvPanel-exe` という名前でビルド成果物をArtifactsに保存（動作確認用）
-- `v*.*.*` 形式のタグをpushしたとき: 上記に加えてGitHub Releasesを自動作成し、
-  `PyEnvPanel.exe` を添付する
+  ビルド成果物をArtifactsに保存（動作確認用）
+- `v*.*.*` 形式のタグをpushしたとき: 上記に加えてGitHub Releasesを自動作成し、次の2つを添付する
+  - `PyEnvPanel.exe` — 単体exe。すぐ実行したいだけならこちらで十分
+  - `PyEnvPanel-dist.zip` — そのタグ時点の**ソース一式 + `PyEnvPanel.exe` を1つにまとめたzip**。
+    `git archive` でその時点のリポジトリ内容（`.venv`/`target_env`/`build`/`dist`等の
+    gitignore対象は含まれない）をそのまま同梱するため、実行だけでなく手元で改修・再ビルドする
+    保守用途にも使える
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 Windows端末側の利用者は、GitHubリポジトリの Releases ページ（最新版の固定リンクは
-`https://github.com/<owner>/<repo>/releases/latest/download/PyEnvPanel.exe`）を開くだけで
-exeをダウンロードできます。
+`https://github.com/<owner>/<repo>/releases/latest/download/PyEnvPanel.exe` または
+`https://github.com/<owner>/<repo>/releases/latest/download/PyEnvPanel-dist.zip`）を開くだけで
+ダウンロードできます（privateリポジトリの場合はログイン、またはAPI経由でのトークン認証が必要）。
 
 ## Claude Codeへの引き継ぎ手順（このプロトタイプをGitHubに公開する）
 

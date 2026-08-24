@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 .venv/
 .build-venv/
+target_env/
 build/
 dist/
 *.spec.bak

@@ -3,13 +3,16 @@ name: Build Windows EXE
 # 目的:
 #   - main への push / PR、および手動実行のたびに windows-latest ランナーで
 #     PyInstallerビルドが通ることを検証する（動作確認用のビルド成果物も添付）。
-#   - "v*.*.*" 形式のタグをpushすると、ビルド後に GitHub Releases を作成し
-#     PyEnvPanel.exe を自動添付する。Windows端末側はこのReleaseページの
-#     固定リンクからexeをダウンロードできる。
+#   - "v*.*.*" 形式のタグをpushすると、ビルド後に GitHub Releases を作成し、
+#     以下の2つを自動添付する。Windows端末側はこのReleaseページの固定リンクから
+#     どちらかをダウンロードできる。
+#       - PyEnvPanel.exe        単体exe（すぐ実行したいだけの場合）
+#       - PyEnvPanel-dist.zip   そのタグ時点のソース一式 + PyEnvPanel.exe を1つに
+#                                まとめたもの（保守・改修も見据えて手元に置いておく場合）
 #
 # 使い方:
-#   git tag v0.1.0
-#   git push origin v0.1.0
+#   git tag v0.2.0
+#   git push origin v0.2.0
 
 on:
   push:
@@ -42,11 +45,28 @@ jobs:
       - name: Build with PyInstaller
         run: pyinstaller pyenv_panel.spec --noconfirm --clean
 
-      - name: Upload build artifact
+      - name: Package combined distribution (source一式 + PyEnvPanel.exe を1つのzipに)
+        # git archive はそのコミットで「git管理下にあるファイルだけ」を書き出すため、
+        # .venv/target_env/dist/build/__pycache__ 等（.gitignore対象）は自然に含まれない。
+        run: |
+          git archive --format=zip --prefix=PyEnvPanel/ -o PyEnvPanel-source.zip HEAD
+          Expand-Archive -Path PyEnvPanel-source.zip -DestinationPath staging -Force
+          Remove-Item PyEnvPanel-source.zip
+          Copy-Item dist/PyEnvPanel.exe -Destination staging/PyEnvPanel/PyEnvPanel.exe
+          Compress-Archive -Path staging/PyEnvPanel -DestinationPath PyEnvPanel-dist.zip -Force
+
+      - name: Upload build artifact (exe単体)
         uses: actions/upload-artifact@v4
         with:
           name: PyEnvPanel-exe
           path: dist/PyEnvPanel.exe
+          if-no-files-found: error
+
+      - name: Upload build artifact (source一式 + exe)
+        uses: actions/upload-artifact@v4
+        with:
+          name: PyEnvPanel-dist
+          path: PyEnvPanel-dist.zip
           if-no-files-found: error
 
   release:
@@ -54,14 +74,22 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - name: Download build artifact
+      - name: Download build artifact (exe単体)
         uses: actions/download-artifact@v4
         with:
           name: PyEnvPanel-exe
           path: dist
 
+      - name: Download build artifact (source一式 + exe)
+        uses: actions/download-artifact@v4
+        with:
+          name: PyEnvPanel-dist
+          path: dist_package
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/PyEnvPanel.exe
+          files: |
+            dist/PyEnvPanel.exe
+            dist_package/PyEnvPanel-dist.zip
           generate_release_notes: true
