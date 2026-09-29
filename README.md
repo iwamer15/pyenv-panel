@@ -14,6 +14,11 @@
     `runtime/python/<version>/` のインストーラをローカルにコピーし、サイレントインストール
     （`app/python_installer.py`。既存のPATH上のPythonには影響しない専用領域に導入）
   - 同期結果を `runtime/status/<hostname>.json` に書き出す
+- ツール別ライブラリ（[詳細](#ツール別ライブラリrequirementstxt参照)）
+  - 登録したツールごとの `requirements.txt` を読み込み、全ツールのライブラリを一覧表示
+  - 選択したツールが必要とするライブラリをハイライトし、インストール済バージョンが要件より
+    古い／新しい／一致 かを色と記号で表示（ツール間でバージョン指定が両立しない「競合」も検出）
+  - 選択行・ツール単位でワンクリック導入／要件の範囲内で最新へ更新
 - 管理者モード
   - `runtime/status/` 配下の各端末レポートを集計し、組織全体の準拠率・端末別の状況を一覧表示
 
@@ -190,6 +195,67 @@ Pythonバージョン自体の不一致（サイレントインストールが�
 要件は、通常のグループ権限だけでは表現できないため、NTFSの `CREATOR OWNER` 特殊プリンシパルを用いて
 実現している（スクリプト内コメント参照）。UNC共有の場合はSMB共有レベルの権限も別途必要になる点に注意。
 
+### ツール別ライブラリ（requirements.txt参照）
+
+ツールバーの「ツール別ライブラリ」で開く画面（[app/ui/tools_view.py](app/ui/tools_view.py)）。
+マニフェスト（組織標準）とは別に、「このツールを動かすにはどのライブラリが要るか」を
+ツールごとの `requirements.txt` で管理し、自分のPC（対象Python）と比べる。
+
+**ツールの登録**: 画面左下の「追加…」でツール名と `requirements.txt` を選ぶ。
+登録内容は `runtime/config/tools.json` に保存される。
+
+- 「共有ランタイムにコピーして保存する」ON（推奨）: `runtime/config/tools/<id>/requirements.txt` にコピーし、
+  全端末が同じ内容を参照する
+- OFF: 選んだファイルを絶対パスのまま参照する（ツールのリポジトリ内の requirements.txt を直接見る場合など）
+
+```json
+{
+  "schema_version": 1,
+  "allow_online": false,
+  "tools": [
+    {"id": "report-tool", "name": "帳票出力ツール",
+     "requirements": "config/tools/report-tool/requirements.txt", "description": "..."}
+  ]
+}
+```
+
+`allow_online` は「PyPI（インターネット）からも取得」チェックの既定値。社内で承認済みの `.whl`
+だけを使わせたい場合は `false` にし、`runtime/wheels/` に `.whl` を置く。
+
+**判定**（[app/tool_compare.py](app/tool_compare.py)）:
+
+| 表示 | 意味 |
+|---|---|
+| ✔ 一致 / ✔ 条件内 / ✔ 導入済 | `==` 指定と一致 / `>=` 等の範囲内 / バージョン指定なしで導入済 |
+| ✖ 未インストール | 導入されていない |
+| ▼ 古い | 要件より古い（例: `>=25.0` に対して 24.0） |
+| ▲ 新しい | 要件より新しい（例: `<60` に対して 65.5.0）。導入すると要件の範囲へ戻す（ダウングレード） |
+| ⚠ 競合 | ツール同士の指定が両立しない（例: A は `six==1.16.0`、B は `six>=1.17`）。全ツール合算では導入できないので、ツールを選んで個別に導入する |
+| 対象外 | 環境マーカー（`; sys_platform == "win32"` 等）によりこのPCでは不要 |
+
+- 左の一覧で「全ツール合算」を選ぶと、全ツールの要件を同時に満たせるかを判定する
+- 一覧の★・青背景が選択ツールで必要なライブラリ。行にマウスを乗せると、各ツールの指定と定義元（ファイル:行番号）が見られる
+- 環境マーカーは、このツール自身ではなく**対象Python側**の値（OS・Pythonバージョン）で評価する
+- requirements.txt の `-r 別ファイル`・行継続・コメント・extras に対応。`-e`・URL指定・`--index-url` 等は対象外として警告表示する
+
+**導入・更新**: 「選択行を要件どおり導入」「選択行を最新へ更新（要件の範囲内）」「要対応をまとめて導入」、
+または行のダブルクリック。実行前に対象と取得元を確認ダイアログで表示する。
+共有ホイールハウスがあれば常に優先して参照し（`--find-links`）、PyPI取得OFF時は `--no-index` を付ける。
+
+CLIでも同じ比較・導入ができる。
+
+```powershell
+python -m app.main tools                                   # 全ツール合算で比較
+python -m app.main tools --tool report-tool                # 1ツール分だけ比較
+python -m app.main tools --tool report-tool --install      # 要対応分を導入（取得元は tools.json の allow_online）
+python -m app.main tools --tool report-tool --install --online   # PyPIからの取得を許可
+```
+
+終了コード: 0 すべて要件を満たす（または導入成功）／1 要対応あり（または導入失敗あり）／2 スキャン失敗・未登録ツール
+
+サンプル（`sample_runtime/config/tools.json`）には3ツールを登録してあり、`six`（固定値）と
+`setuptools`（範囲指定）でツール同士が競合する例、`pywin32`（Windowsのみ）が対象外になる例を含む。
+
 ## ディレクトリ構成
 
 ```
@@ -203,10 +269,14 @@ prototype/
 │  ├─ python_installer.py    Python本体のサイレントインストール
 │  ├─ status.py              端末レポートの読み書き
 │  ├─ service.py             GUI/CLI共通のサービス層
-│  ├─ cli.py                 ヘッドレス自己診断（タスクスケジューラ向け、`app.main check`）
+│  ├─ cli.py                 ヘッドレス自己診断（`app.main check`）／ツール別比較（`app.main tools`）
+│  ├─ requirements_file.py   ツールごとの requirements.txt の解析
+│  ├─ tools_registry.py      ツール登録簿（runtime/config/tools.json）の読み書き
+│  ├─ tool_compare.py        要件とインストール済バージョンの比較（古い/新しい/一致）・競合検出
 │  ├─ ui/
 │  │  ├─ main_window.py      モード切替（QStackedWidget）
 │  │  ├─ terminal_view.py    端末モード画面
+│  │  ├─ tools_view.py       ツール別ライブラリ画面
 │  │  ├─ admin_view.py       管理者モード画面
 │  │  └─ manifest_editor.py  マニフェスト編集ダイアログ（管理者モードから起動）
 │  └─ main.py                エントリポイント（GUI／`check`サブコマンドでヘッドレス実行を振り分け）

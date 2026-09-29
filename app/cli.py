@@ -40,6 +40,8 @@ from . import service, status
 from .config import RuntimePaths, resolve_runtime_root, resolve_target_python
 from .manifest import ManifestError
 from .scanner import ScanError
+from .tool_compare import LibStatus
+from .tools_registry import ToolsRegistryError
 
 logger = logging.getLogger("pyenv_panel.cli")
 
@@ -135,6 +137,58 @@ def run_check(group: str = "default", auto_sync: bool = False) -> int:
     return 1
 
 
+def run_tools(tool_id: str | None = None, install: bool = False, online: bool | None = None) -> int:
+    """登録ツールの requirements.txt と対象Pythonを比較して表示する（--install で要対応分を導入）。
+
+    終了コード: 0 全て要件を満たす / 1 要対応あり / 2 スキャン失敗・ツール未登録
+    """
+    paths = resolve_runtime_root()
+    target_python = resolve_target_python()
+    try:
+        result = service.run_tools_scan(paths, target_python)
+    except (ScanError, ToolsRegistryError) as e:
+        print(f"[ERROR] スキャンに失敗しました: {e}", file=sys.stderr)
+        return 2
+    table = result.table
+    if tool_id is not None and tool_id not in table.tool_names:
+        print(f"[ERROR] 未登録のツールです: {tool_id}（登録済み: {', '.join(table.tool_names) or 'なし'}）", file=sys.stderr)
+        return 2
+
+    label = table.tool_names[tool_id] if tool_id else "全ツール合算"
+    print(f"対象Python: {target_python}（{result.local_python_version}） / 表示: {label}")
+    for tid, err in table.tool_errors.items():
+        print(f"[ERROR] {table.tool_names[tid]}: {err}")
+    for tid, warns in table.tool_warnings.items():
+        for w in warns:
+            print(f"[WARN] {table.tool_names[tid]}: {w}")
+
+    print(f"{'ライブラリ':<24}{'要件':<18}{'インストール済':<16}{'判定':<10}使用ツール")
+    for row in table.rows:
+        ev = row.evaluate(tool_id)
+        if tool_id is not None and not ev.needed and ev.status != LibStatus.NOT_APPLICABLE:
+            continue
+        users = ", ".join([table.tool_names[t] for t in row.reqs] + [f"{table.tool_names[t]}(対象外)" for t in row.excluded])
+        conflict = f"  ⚠競合: {' / '.join(row.conflicts)}" if row.conflicts else ""
+        print(f"{row.name:<24}{ev.specifier or '(指定なし)':<18}{row.installed_version or '-':<16}{ev.status.value:<10}{users}{conflict}")
+
+    actions = table.action_specs(tool_id)
+    if not actions:
+        print("すべて要件を満たしています。")
+        return 0
+    print(f"要対応: {len(actions)} 件（{', '.join(ev.install_spec for _, ev in actions)}）")
+    if not install:
+        return 1
+
+    allow_online = result.registry.allow_online if online is None else online
+    results = service.run_tool_install(
+        paths, target_python, [ev.install_spec for _, ev in actions],
+        allow_online=allow_online, progress_cb=print,
+    )
+    for r in results:
+        print(f"  [{'OK' if r.success else 'NG'}] {r.name}: {r.message}")
+    return 0 if all(r.success for r in results) else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="app.cli",
@@ -152,6 +206,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="パッケージ差分があれば --no-index --find-links によるオフライン同期まで自動実行する"
         "（Pythonバージョン自体の不一致は対象外）",
     )
+
+    tools_p = sub.add_parser("tools", help="登録ツールの requirements.txt と対象Pythonのライブラリを比較する")
+    tools_p.add_argument("--tool", default=None, help="ツールID（省略時は全ツール合算）")
+    tools_p.add_argument("--install", action="store_true", help="未インストール・古い・新しいライブラリを要件どおりに導入する")
+    online = tools_p.add_mutually_exclusive_group()
+    online.add_argument("--online", dest="online", action="store_true", default=None, help="PyPIからの取得を許可する")
+    online.add_argument("--offline", dest="online", action="store_false", help="共有ホイールハウスのみから導入する")
     return parser
 
 
@@ -161,6 +222,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "check":
         return run_check(group=args.group, auto_sync=args.sync)
+    if args.command == "tools":
+        return run_tools(tool_id=args.tool, install=args.install, online=args.online)
 
     parser.print_help()
     return 1

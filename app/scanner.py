@@ -58,6 +58,45 @@ def get_installed_packages(target_python: str, timeout: int = 30) -> dict[str, s
     return {item["name"].lower(): item["version"] for item in items}
 
 
+# packaging.markers.default_environment() と同じキーを、対象Python側で計算させるスクリプト
+# （このツール自身のPythonと対象Pythonはバージョン・OSが異なりうるため）。
+_MARKER_ENV_SCRIPT = r"""
+import json, os, platform, sys
+def fmt(info):
+    v = "%d.%d.%d" % (info.major, info.minor, info.micro)
+    if info.releaselevel != "final":
+        v += info.releaselevel[0] + str(info.serial)
+    return v
+print(json.dumps({
+    "implementation_name": sys.implementation.name,
+    "implementation_version": fmt(sys.implementation.version),
+    "os_name": os.name,
+    "platform_machine": platform.machine(),
+    "platform_release": platform.release(),
+    "platform_system": platform.system(),
+    "platform_version": platform.version(),
+    "python_full_version": platform.python_version(),
+    "platform_python_implementation": platform.python_implementation(),
+    "python_version": ".".join(platform.python_version_tuple()[:2]),
+    "sys_platform": sys.platform,
+}))
+"""
+
+
+def get_marker_environment(target_python: str, timeout: int = 15) -> dict[str, str] | None:
+    """対象Pythonの環境マーカー値（sys_platform 等）を返す。取得できなければ None。"""
+    try:
+        proc = subprocess.run(
+            [target_python, "-c", _MARKER_ENV_SCRIPT],
+            capture_output=True, text=True, timeout=timeout,
+        )
+        if proc.returncode != 0:
+            return None
+        return json.loads(proc.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        return None
+
+
 def compute_diff(manifest: ManifestData, installed: dict[str, str]) -> list[DiffItem]:
     diff_items: list[DiffItem] = []
     for req in manifest.packages:

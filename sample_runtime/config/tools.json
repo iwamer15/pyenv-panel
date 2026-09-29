@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "allow_online": false,
+  "tools": [
+    {
+      "id": "report-tool",
+      "name": "帳票出力ツール",
+      "requirements": "config/tools/report-tool/requirements.txt",
+      "description": "月次帳票の自動作成（サンプル）"
+    },
+    {
+      "id": "data-tool",
+      "name": "データ集計ツール",
+      "requirements": "config/tools/data-tool/requirements.txt",
+      "description": "CSV集計バッチ（サンプル）"
+    },
+    {
+      "id": "legacy-bridge",
+      "name": "旧システム連携ツール",
+      "requirements": "config/tools/legacy-bridge/requirements.txt",
+      "description": "旧基幹システムとのファイル連携（サンプル。six のバージョン指定が帳票出力ツールと競合する例）"
+    }
+  ]
+}

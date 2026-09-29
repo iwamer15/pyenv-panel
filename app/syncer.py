@@ -58,6 +58,55 @@ def sync_packages(
     return results
 
 
+def install_specs(
+    target_python: str,
+    specs: list[str],
+    wheels_dir: Path | None,
+    allow_online: bool,
+    upgrade: bool = False,
+    progress_cb: Callable[[str], None] | None = None,
+    timeout: int = 600,
+) -> list[SyncResult]:
+    """ツール別画面からのインストール/更新。
+
+    specs は "numpy>=1.24,<2" のような要件文字列。1件ずつ実行して結果を個別に返す。
+    取得元:
+      - 共有ホイールハウス（wheels_dir）が存在すれば常に --find-links で優先的に参照
+      - allow_online=False のときは --no-index（社内承認済みの .whl のみ。オフライン）
+      - allow_online=True のときは PyPI からも取得する
+    upgrade=True は「要件の範囲内で最新へ更新」（pip install --upgrade）。
+    """
+    results: list[SyncResult] = []
+    base_cmd = [target_python, "-m", "pip", "install", "--disable-pip-version-check"]
+    if upgrade:
+        base_cmd.append("--upgrade")
+    if wheels_dir is not None and wheels_dir.exists():
+        base_cmd.append(f"--find-links={wheels_dir}")
+    elif not allow_online:
+        for spec in specs:
+            results.append(SyncResult(spec, "", False, f"オフライン指定ですがホイールハウスが見つかりません: {wheels_dir}"))
+        return results
+    if not allow_online:
+        base_cmd.append("--no-index")
+
+    for spec in specs:
+        if progress_cb:
+            progress_cb(f"{'更新' if upgrade else 'インストール'}中: {spec}")
+        try:
+            proc = subprocess.run(base_cmd + [spec], capture_output=True, text=True, timeout=timeout)
+        except (OSError, subprocess.SubprocessError) as e:
+            results.append(SyncResult(spec, "", False, f"実行エラー: {e}"))
+            continue
+        if proc.returncode == 0:
+            lines = (proc.stdout or "").strip().splitlines()
+            done = next((ln for ln in reversed(lines) if ln.startswith(("Successfully installed", "Requirement already satisfied"))), "完了")
+            results.append(SyncResult(spec, "", True, done))
+        else:
+            tail = (proc.stderr or proc.stdout or "").strip().splitlines()
+            results.append(SyncResult(spec, "", False, tail[-1] if tail else "不明なエラー"))
+    return results
+
+
 def build_python_install_hint(installer_path: Path) -> str:
     """Pythonバージョン自体の不一致時の案内文を組み立てる。
 
