@@ -28,10 +28,16 @@ def main() -> int:
 
     # 遅延import: ヘッドレス実行時にPySide6のQApplication初期化コストや
     # プラットフォームプラグイン依存を避けるため、GUIモードでのみ読み込む。
+    from PySide6.QtGui import QFont
     from PySide6.QtWidgets import QApplication
     from .ui.main_window import MainWindow
+    from .ui.theme import APP_QSS
 
     app = QApplication(sys.argv)
+    app.setStyle("Fusion")   # OSごとの見た目の差をなくし、スタイルシートを確実に効かせる
+    if sys.platform == "win32":
+        app.setFont(QFont("Yu Gothic UI", 10))
+    app.setStyleSheet(APP_QSS)
 
     paths = resolve_runtime_root()
     target_python = resolve_target_python()

@@ -12,3 +12,6 @@ sample_runtime/status/*.json.tmp
 # リポジトリには含めない想定
 sample_runtime/python/**/*.exe
 sample_runtime/python/**/*.zip
+
+# macOS
+.DS_Store

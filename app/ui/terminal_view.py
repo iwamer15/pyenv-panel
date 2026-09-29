@@ -84,6 +84,17 @@ class TerminalView(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(10)
+
+        title = QLabel("このPCの標準構成")
+        title.setObjectName("h1")
+        root.addWidget(title)
+        desc = QLabel("組織標準（マニフェスト）で決められたPython・ライブラリと、このPCの状態を比べます。"
+                      "「まとめて同期」で共有フォルダの .whl から不足分を導入します。")
+        desc.setObjectName("muted")
+        desc.setWordWrap(True)
+        root.addWidget(desc)
 
         info_row = QHBoxLayout()
         self.python_label = QLabel("Pythonバージョン: -")
@@ -104,20 +115,24 @@ class TerminalView(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setDefaultSectionSize(32)
+        self.table.setShowGrid(False)
         root.addWidget(self.table, stretch=1)
 
         btn_row = QHBoxLayout()
-        self.rescan_btn = QPushButton("再スキャン")
+        self.rescan_btn = QPushButton("⟳ 再スキャン")
         self.sync_btn = QPushButton("まとめて同期")
+        self.sync_btn.setObjectName("primary")
         self.install_python_btn = QPushButton("Pythonをインストール")
         self.install_python_btn.setVisible(False)
         self.rescan_btn.clicked.connect(self.rescan)
         self.sync_btn.clicked.connect(self.sync_all)
         self.install_python_btn.clicked.connect(self.install_python)
         btn_row.addWidget(self.rescan_btn)
+        btn_row.addStretch(1)
         btn_row.addWidget(self.install_python_btn)
         btn_row.addWidget(self.sync_btn)
-        btn_row.addStretch(1)
         root.addLayout(btn_row)
 
         self.log = QPlainTextEdit()
@@ -130,6 +145,16 @@ class TerminalView(QWidget):
         self.log.appendPlainText(text)
 
     def rescan(self):
+        if not self.paths.manifest_path.exists():
+            # 新しく作った共有フォルダ等。エラーダイアログは出さず、画面内で案内する
+            self.manifest = self.report = None
+            self.table.setRowCount(0)
+            self.python_label.setText("組織標準（マニフェスト）が未設定です")
+            self.manifest_label.setText("管理者画面の「マニフェスト編集」で作成できます")
+            self.badge_label.setText("状態: 未設定")
+            self.badge_label.setStyleSheet("font-weight: bold; padding: 2px 10px; border-radius: 4px; background:#f1f5f9; color:#64748b;")
+            self.install_python_btn.setVisible(False)
+            return
         try:
             self.manifest, self.report = service.run_scan(self.paths, self.target_python, group=self.group)
         except (ManifestError, ScanError) as e:

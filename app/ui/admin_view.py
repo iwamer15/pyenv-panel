@@ -29,6 +29,8 @@ class AdminView(QWidget):
 
     def _build_ui(self):
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 12, 16, 12)
+        root.setSpacing(10)
 
         summary_row = QHBoxLayout()
         self.summary_label = QLabel("組織全体の準拠率: -")
@@ -53,6 +55,8 @@ class AdminView(QWidget):
             self.table.horizontalHeader().setSectionResizeMode(col, QHeaderView.ResizeToContents)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setShowGrid(False)
         root.addWidget(self.table, stretch=1)
 
     def edit_manifest(self):

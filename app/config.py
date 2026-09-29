@@ -89,6 +89,14 @@ def resolve_runtime_root() -> RuntimePaths:
     if default_path.exists():
         return RuntimePaths(default_path)
 
+    # exe化した場合: exeと同じフォルダの runtime/ → sample_runtime/ を探す
+    # （配布zipを展開してそのまま起動したときに設定なしで動くようにする）
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).resolve().parent
+        for name in ("runtime", "sample_runtime"):
+            if (exe_dir / name).is_dir():
+                return RuntimePaths(exe_dir / name)
+
     # 開発・デモ用フォールバック（共有サーバに接続できない環境向け）
     return RuntimePaths(_dev_fallback_root())
 
@@ -117,13 +125,20 @@ def resolve_target_python() -> str:
     return sys.executable
 
 
-def write_user_config(root: str, target_python: str | None = None) -> Path:
-    """管理者/利用者がGUIから明示的にランタイムルート等を変更した際に保存する。"""
+def is_env_overridden(kind: str) -> bool:
+    """環境変数で指定されている場合、GUIからの変更（config.ini）は効かないため画面で知らせる。"""
+    return bool(os.environ.get(ENV_VAR if kind == "runtime" else TARGET_PYTHON_ENV_VAR))
+
+
+def write_user_config(root: str | None = None, target_python: str | None = None) -> Path:
+    """管理者/利用者がGUIから明示的にランタイムルート等を変更した際に保存する。
+    None の項目は既存の値を変更しない。"""
     ini_path = _user_config_ini_path()
     ini_path.parent.mkdir(parents=True, exist_ok=True)
     parser = configparser.ConfigParser()
     parser.read(ini_path, encoding="utf-8") if ini_path.exists() else None
-    parser["runtime"] = {"root": root}
+    if root:
+        parser["runtime"] = {"root": root}
     if target_python:
         parser["target"] = {"python": target_python}
     with open(ini_path, "w", encoding="utf-8") as f:
